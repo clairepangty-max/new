@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>採購工作甘特圖（可拖拉調整區間）</title>
+  <style>
+    :root {
+      --task-col-width: 140px;
+      --day-width: 34px;
+      --month-row-h: 42px;
+      --date-row-h: 36px;
+      --row-h: 52px;
+      --bar-h: 24px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: "Microsoft JhengHei", Arial, sans-serif;
+      background: #f7f9fc;
+      margin: 20px;
+      color: #333;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+      color: #1f4e79;
+    }
+
+    .hint {
+      text-align: center;
+      margin-bottom: 14px;
+      color: #666;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .panel {
+      max-width: 100%;
+      background: #fff;
+      border: 1px solid #d9e2f3;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+      padding: 16px;
+    }
+
+    .gantt-wrapper {
+      overflow: auto;
+      border: 1px solid #d9e2f3;
+      border-radius: 10px;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      background: #fff;
+      position: relative;
+      scrollbar-width: thin;
+    }
+
+    .gantt-wrapper.dragging-scroll {
+      cursor: grabbing;
+    }
+
+    .gantt {
+      position: relative;
+      width: max-content;
+      min-width: 100%;
+    }
+
+    .grid-row {
+      display: grid;
+      grid-template-columns: var(--task-col-width) repeat(92, var(--day-width));
+      width: max-content;
+    }
+
+    .cell {
+      border-right: 1px solid #d9d9d9;
+      border-bottom: 1px solid #d9d9d9;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      background: #fff;
+    }
+
+    .task-col {
+      position: sticky;
+      left: 0;
+      z-index: 6;
+      background: #eef3f8;
+      font-weight: bold;
+      border-right: 1px solid #c8d7ea;
+    }
+
+    .month-row .cell {
+      height: var(--month-row-h);
+      font-weight: bold;
+      background: #bdd7ee;
+      color: #1f1f1f;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      border-bottom: 1px solid #b8cbe0;
+    }
+
+    .date-row .cell {
+      height: var(--date-row-h);
+      background: #ddebf7;
+      font-size: 12px;
+      position: sticky;
+      top: var(--month-row-h);
+      z-index: 4;
+    }
+
+    .date-row .weekend,
+    .task-grid .weekend-bg {
+      background: #f5f5f5;
+    }
+
+    .task-grid {
+      position: relative;
+    }
+
+    .task-row {
+      display: grid;
+      grid-template-columns: var(--task-col-width) 1fr;
+      width: max-content;
+      min-width: calc(var(--task-col-width) + 92 * var(--day-width));
+    }
+
+    .task-label {
+      height: var(--row-h);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      background: #eef3f8;
+      font-weight: bold;
+      border-right: 1px solid #c8d7ea;
+      border-bottom: 1px solid #d9d9d9;
+    }
+
+    .task-track {
+      position: relative;
+      height: var(--row-h);
+      width: calc(92 * var(--day-width));
+      border-bottom: 1px solid #d9d9d9;
+      background-image: repeating-linear-gradient(
+        to right,
+        transparent 0,
+        transparent calc(var(--day-width) - 1px),
+        #d9d9d9 calc(var(--day-width) - 1px),
+        #d9d9d9 var(--day-width)
+      );
+    }
+
+    .task-track.weekend-pattern {
+      background-image: none;
+    }
+
+    .task-track .day-bg {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: var(--day-width);
+      border-right: 1px solid #d9d9d9;
+    }
+
+    .task-track .day-bg.weekend-bg {
+      background: #f5f5f5;
+    }
+
+    .bar {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      height: var(--bar-h);
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+      cursor: grab;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      min-width: var(--day-width);
+    }
+
+    .bar.dragging,
+    .bar.resizing {
+      cursor: grabbing;
+      opacity: 0.95;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+    }
+
+    .bar-handle {
+      position: absolute;
+      top: 0;
+      width: 10px;
+      height: 100%;
+      cursor: ew-resize;
+      z-index: 3;
+    }
+
+    .bar-handle.left {
+      left: 0;
+      border-radius: 8px 0 0 8px;
+    }
+
+    .bar-handle.right {
+      right: 0;
+      border-radius: 0 8px 8px 0;
+    }
+
+    .bar-label {
+      pointer-events: none;
+      padding: 0 12px;
+      white-space: nowrap;
+    }
+
+    .bar-quote { background: #5b9bd5; }
+    .bar-compare { background: #70ad47; }
+    .bar-negotiate { background: #ffc000; color: #333; }
+    .bar-sign { background: #ed7d31; }
+    .bar-perform { background: #4472c4; }
+    .bar-accept { background: #a5a5a5; }
+    .bar-pay { background: #c55a11; }
+
+    .legend {
+      margin-top: 16px;
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 14px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-color {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+    }
+
+    .status {
+      margin-top: 14px;
+      padding: 10px 12px;
+      background: #f3f7fb;
+      border: 1px solid #d9e2f3;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #425466;
+    }
+  </style>
+</head>
+<body>
+  <h1>採購工作甘特圖</h1>
+  <div class="hint">可用滑鼠左右拖曳整體時間軸；下方彩色區塊可直接拖曳移動，也可拖左右兩端調整起訖天數。</div>
+
+  <div class="panel">
+    <div class="gantt-wrapper" id="ganttWrapper">
+      <div class="gantt" id="gantt"></div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><span class="legend-color" style="background:#5b9bd5;"></span> 詢價</div>
+      <div class="legend-item"><span class="legend-color" style="background:#70ad47;"></span> 比價</div>
+      <div class="legend-item"><span class="legend-color" style="background:#ffc000;"></span> 議價</div>
+      <div class="legend-item"><span class="legend-color" style="background:#ed7d31;"></span> 簽約</div>
+      <div class="legend-item"><span class="legend-color" style="background:#4472c4;"></span> 履約</div>
+      <div class="legend-item"><span class="legend-color" style="background:#a5a5a5;"></span> 驗收</div>
+      <div class="legend-item"><span class="legend-color" style="background:#c55a11;"></span> 請款</div>
+    </div>
+
+    <div class="status" id="status">目前可直接拖曳各專案色塊，系統會即時更新區間。</div>
+  </div>
+
+  <script>
+    const DAY_WIDTH = 34;
+    const MONTHS = [
+      { label: '5月', days: 31 },
+      { label: '6月', days: 30 },
+      { label: '7月', days: 31 }
+    ];
+
+    const tasks = [
+      { key: 'quote', name: '詢價', className: 'bar-quote', start: 2, end: 7 },
+      { key: 'compare', name: '比價', className: 'bar-compare', start: 8, end: 13 },
+      { key: 'negotiate', name: '議價', className: 'bar-negotiate', start: 14, end: 18 },
+      { key: 'sign', name: '簽約', className: 'bar-sign', start: 19, end: 25 },
+      { key: 'perform', name: '履約', className: 'bar-perform', start: 26, end: 48 },
+      { key: 'accept', name: '驗收', className: 'bar-accept', start: 49, end: 54 },
+      { key: 'pay', name: '請款', className: 'bar-pay', start: 55, end: 60 }
+    ];
+
+    const gantt = document.getElementById('gantt');
+    const ganttWrapper = document.getElementById('ganttWrapper');
+    const status = document.getElementById('status');
+
+    const days = [];
+    let monthIndex = 0;
+    MONTHS.forEach(month => {
+      for (let d = 1; d <= month.days; d++) {
+        days.push({ month: month.label, day: d, monthIndex, weekend: isWeekend(monthIndex, d) });
+      }
+      monthIndex++;
+    });
+
+    function isWeekend(monthIndex, day) {
+      const weekendMap = {
+        0: [3,4,10,11,17,18,24,25,31],
+        1: [1,7,8,14,15,21,22,28,29],
+        2: [4,5,11,12,18,19,25,26]
+      };
+      return weekendMap[monthIndex].includes(day);
+    }
+
+    function buildHeader() {
+      const monthRow = document.createElement('div');
+      monthRow.className = 'grid-row month-row';
+
+      const monthTaskCell = document.createElement('div');
+      monthTaskCell.className = 'cell task-col';
+      monthTaskCell.textContent = '項目名稱';
+      monthRow.appendChild(monthTaskCell);
+
+      MONTHS.forEach(month => {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.textContent = month.label;
+        cell.style.gridColumn = `span ${month.days}`;
+        monthRow.appendChild(cell);
+      });
+
+      const dateRow = document.createElement('div');
+      dateRow.className = 'grid-row date-row';
+
+      const dateTaskCell = document.createElement('div');
+      dateTaskCell.className = 'cell task-col';
+      dateTaskCell.textContent = '日期';
+      dateRow.appendChild(dateTaskCell);
+
+      days.forEach(d => {
+        const cell = document.createElement('div');
+        cell.className = 'cell' + (d.weekend ? ' weekend' : '');
+        cell.textContent = d.day;
+        dateRow.appendChild(cell);
+      });
+
+      gantt.appendChild(monthRow);
+      gantt.appendChild(dateRow);
+    }
+
+    function buildTasks() {
+      const taskGrid = document.createElement('div');
+      taskGrid.className = 'task-grid';
+
+      tasks.forEach((task, index) => {
+        const row = document.createElement('div');
+        row.className = 'task-row';
+        row.dataset.taskIndex = index;
+
+        const label = document.createElement('div');
+        label.className = 'task-label';
+        label.textContent = task.name;
+
+        const track = document.createElement('div');
+        track.className = 'task-track';
+        track.dataset.taskIndex = index;
+
+        days.forEach((d, dayIndex) => {
+          const dayBg = document.createElement('div');
+          dayBg.className = 'day-bg' + (d.weekend ? ' weekend-bg' : '');
+          dayBg.style.left = `${dayIndex * DAY_WIDTH}px`;
+          track.appendChild(dayBg);
+        });
+
+        const bar = createBar(task, index);
+        track.appendChild(bar);
+
+        row.appendChild(label);
+        row.appendChild(track);
+        taskGrid.appendChild(row);
+      });
+
+      gantt.appendChild(taskGrid);
+    }
+
+    function createBar(task, index) {
+      const bar = document.createElement('div');
+      bar.className = `bar ${task.className}`;
+      bar.dataset.taskIndex = index;
+
+      const leftHandle = document.createElement('div');
+      leftHandle.className = 'bar-handle left';
+      leftHandle.dataset.action = 'resize-left';
+
+      const rightHandle = document.createElement('div');
+      rightHandle.className = 'bar-handle right';
+      rightHandle.dataset.action = 'resize-right';
+
+      const label = document.createElement('div');
+      label.className = 'bar-label';
+      label.textContent = task.name;
+
+      bar.appendChild(leftHandle);
+      bar.appendChild(label);
+      bar.appendChild(rightHandle);
+
+      updateBarPosition(bar, task);
+      attachBarEvents(bar, task, label);
+      return bar;
+    }
+
+    function updateBarPosition(bar, task) {
+      const widthDays = task.end - task.start + 1;
+      bar.style.left = `${task.start * DAY_WIDTH}px`;
+      bar.style.width = `${widthDays * DAY_WIDTH}px`;
+      const label = bar.querySelector('.bar-label');
+      label.textContent = `${task.name} (${formatIndex(task.start)} ~ ${formatIndex(task.end)})`;
+    }
+
+    function formatIndex(index) {
+      const d = days[index];
+      return `${d.month}${d.day}日`;
+    }
+
+    function attachBarEvents(bar, task) {
+      let mode = null;
+      let startClientX = 0;
+      let originStart = task.start;
+      let originEnd = task.end;
+
+      bar.addEventListener('mousedown', (e) => {
+        const action = e.target.dataset.action;
+        if (action === 'resize-left') mode = 'resize-left';
+        else if (action === 'resize-right') mode = 'resize-right';
+        else mode = 'move';
+
+        e.stopPropagation();
+        e.preventDefault();
+
+        startClientX = e.clientX;
+        originStart = task.start;
+        originEnd = task.end;
+
+        bar.classList.add(mode === 'move' ? 'dragging' : 'resizing');
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+
+      function onMove(e) {
+        const deltaX = e.clientX - startClientX;
+        const deltaDays = Math.round(deltaX / DAY_WIDTH);
+        const totalDays = days.length;
+
+        if (mode === 'move') {
+          const duration = originEnd - originStart;
+          let newStart = originStart + deltaDays;
+          newStart = Math.max(0, Math.min(newStart, totalDays - duration - 1));
+          task.start = newStart;
+          task.end = newStart + duration;
+        } else if (mode === 'resize-left') {
+          let newStart = originStart + deltaDays;
+          newStart = Math.max(0, Math.min(newStart, task.end));
+          task.start = newStart;
+        } else if (mode === 'resize-right') {
+          let newEnd = originEnd + deltaDays;
+          newEnd = Math.min(totalDays - 1, Math.max(newEnd, task.start));
+          task.end = newEnd;
+        }
+
+        updateBarPosition(bar, task);
+        updateStatus(task);
+      }
+
+      function onUp() {
+        bar.classList.remove('dragging', 'resizing');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+    }
+
+    function updateStatus(task) {
+      const duration = task.end - task.start + 1;
+      status.textContent = `${task.name}：${formatIndex(task.start)} ～ ${formatIndex(task.end)}，共 ${duration} 天。`;
+    }
+
+    function initScrollDrag() {
+      let isDown = false;
+      let startX;
+      let scrollLeft;
+      let skipScrollDrag = false;
+
+      ganttWrapper.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.bar')) {
+          skipScrollDrag = true;
+          return;
+        }
+        skipScrollDrag = false;
+        isDown = true;
+        ganttWrapper.classList.add('dragging-scroll');
+        startX = e.pageX - ganttWrapper.offsetLeft;
+        scrollLeft = ganttWrapper.scrollLeft;
+      });
+
+      ganttWrapper.addEventListener('mouseleave', () => {
+        isDown = false;
+        ganttWrapper.classList.remove('dragging-scroll');
+      });
+
+      ganttWrapper.addEventListener('mouseup', () => {
+        isDown = false;
+        ganttWrapper.classList.remove('dragging-scroll');
+      });
+
+      ganttWrapper.addEventListener('mousemove', (e) => {
+        if (!isDown || skipScrollDrag) return;
+        e.preventDefault();
+        const x = e.pageX - ganttWrapper.offsetLeft;
+        const walk = (x - startX) * 1.5;
+        ganttWrapper.scrollLeft = scrollLeft - walk;
+      });
+    }
+
+    buildHeader();
+    buildTasks();
+    initScrollDrag();
+  </script>
+</body>
+</html>
